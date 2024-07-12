@@ -9,14 +9,23 @@ if (__name__ == "__main__"):
             
     def block_with_time(ip,time,is_add=1):
         global block,time_count
+        password = "idk" ## <- Linux password
+        command_remove = f"sudo iptables -D INPUT -s {ip} -j DROP"
+        command_add = f"sudo iptables -A INPUT -s {ip} -j DROP"
         if is_add==1:
             block.append(ip)
-        system(f"sudo iptables -A INPUT -s {ip} -j DROP".format(ip))
+        child = pexpect.spawn(command_add)
+        child.expect("password for")
+        child.sendline(password)
+        child.expect(pexpect.EOF)
         print(f'[INFO_TIMEBLOCK] {ip} DROPPED caused by exceeding threshold')
         while time_count<=time:
             sleep(1)
         while ip in block:
-            system(f"sudo iptables -D INPUT -s {ip} -j DROP")
+            child = pexpect.spawn(command_remove)
+            child.expect("password for")
+            child.sendline(password)
+            child.expect(pexpect.EOF)
             block.remove(ip)
             print(f'[INFO_TIMEBLOCK] {ip} UNDROPPED - by expired {block_time} minutes')
         print("Unblock: {} (Out of time)".format(ip))
