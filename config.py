@@ -24,11 +24,11 @@ block_time = 20  # 30 minutes
 # user can connect again when timeout
 timeout_conn = 180  # 180 seconds
 
-# ip host fake
-host_fake="127.0.0.1"
+# ip host fake, Customize here
+host_fake="0.0.0.0"
 
-# ip host real
-host_real="192.168.0.102"
+# ip host real, Customize here
+host_real="0.0.0.0"
 
 # Fake port for open port firewall
 port_fake=8001
