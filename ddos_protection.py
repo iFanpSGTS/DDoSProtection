@@ -41,26 +41,65 @@ class DDoSProtection:
         self.time_send_server = 1 / 1000
 
     def load_config(self):
-        self.host_fake = host_fake
-        self.host_real = host_real
-        self.port_fake = port_fake
-        self.port_real = port_real
-        self.max_speed_user = max_speed_user
-        self.max_speed_server = max_speed_server
-        self.timeout_conn = timeout_conn
-        self.reset_send_data_user = reset_send_data_user
-        self.max_conn = max_conn
-        self.max_data_user = max_data_user
-        self.block_on_count = block_on_count
-        self.reset_on_time = reset_on_time
-        self.is_get_sock = is_get_sock
-        self.ban_sock = ban_sock
-        self.headers = headers
-        self.ban_ip = ban_ip
-        self.list_ban_ip = str(ban_ip).replace("/32", "")
-        self.force_firewall_count = force_firewall_count
-        self.block_time = block_time
-        self.time_connect = time_connect
+        try:
+            ########################################################
+            self.host_fake = host_fake
+            self.host_real = host_real
+            self.port_fake = port_fake
+            self.port_real = port_real
+            self.max_speed_user = max_speed_user
+            self.max_speed_server = max_speed_server
+            self.timeout_conn = timeout_conn
+            self.reset_send_data_user = reset_send_data_user
+            self.max_conn = max_conn
+            self.max_data_user = max_data_user
+            self.block_on_count = block_on_count
+            self.reset_on_time = reset_on_time
+            self.is_get_sock = is_get_sock
+            self.ban_sock = ban_sock
+            self.headers = headers
+            self.ban_ip = ban_ip
+            self.list_ban_ip = str(ban_ip).replace("/32", "")
+            self.force_firewall_count = force_firewall_count
+            self.block_time = block_time
+            self.time_connect = time_connect
+            #########################################################
+            
+            for ip in [self.host_fake, self.host_real]:
+                if not isinstance(ip, str) or not all(0 <= int(part) < 256 for part in ip.split('.')):
+                    raise ValueError(f"Invalid IP address: {ip}")
+            for port in [self.port_fake, self.port_real]:
+                if not isinstance(port, int) or not (1 <= port <= 65535):
+                    raise ValueError(f"Invalid port: {port}")
+            if not isinstance(self.max_speed_user, int) or self.max_speed_user < 0:
+                raise ValueError("max_speed_user should be a non-negative integer")
+            if not isinstance(self.max_speed_server, int) or self.max_speed_server < 0:
+                raise ValueError("max_speed_server should be a non-negative integer")
+            if not isinstance(self.timeout_conn, int) or self.timeout_conn < 1:
+                raise ValueError("timeout_conn should be at least 1")
+            if not isinstance(self.reset_send_data_user, int) or self.reset_send_data_user < 0:
+                raise ValueError("reset_send_data_user should be a non-negative integer")
+            if not isinstance(self.max_conn, int) or self.max_conn < 1:
+                raise ValueError("max_conn should be at least 1")
+            if not isinstance(self.max_data_user, int) or self.max_data_user < 0:
+                raise ValueError("max_data_user should be a non-negative integer")
+            if not isinstance(self.block_on_count, int) or self.block_on_count < 1:
+                raise ValueError("block_on_count should be at least 1")
+            if not isinstance(self.reset_on_time, int) or self.reset_on_time < 1:
+                raise ValueError("reset_on_time should be at least 1")
+            if not isinstance(self.is_get_sock, int) or self.is_get_sock not in [0, 1]:
+                raise ValueError("is_get_sock should be either 0 or 1")
+            if not isinstance(self.force_firewall_count, int) or self.force_firewall_count < 0:
+                raise ValueError("force_firewall_count should be a non-negative integer")
+            if not isinstance(self.block_time, int) or self.block_time < 0:
+                raise ValueError("block_time should be a non-negative integer")
+            if not isinstance(self.time_connect, (int, float)) or self.time_connect < 0:
+                raise ValueError("time_connect should be a non-negative number")
+
+        except ValueError as e:
+            print(f"[CONFIG_ERR]>> {e}")
+            input()
+            sys.exit()
 
     def time_run(self):
         while True:
