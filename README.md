@@ -7,6 +7,7 @@
   - Still cannot block botnet, but now after using IPTables and new logic algorithm it can block 2TB+ Booter.
   - OOP Code rewrite, so now you can more understand how it works
   - Proxy banned status.
+  - UDP and TCP now is protected with advanced algorithm for defends a DDoS Attacks.
 
 # Usage
   - ```py
