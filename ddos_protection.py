@@ -1,29 +1,38 @@
 import sys
 import socket
-import signal
+import signal, random, string
 from os import kill, getpid, name, system, remove
-from time import sleep
+from time import sleep; import time
 from threading import Thread
 from random import choice
 from urllib.parse import unquote
 from subprocess import Popen, PIPE, DEVNULL
 import pexpect
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import json
 
 # Import configuration variables at the module level
 try:
     from config import (
         host_fake, host_real, port_fake, port_real, max_speed_user, max_speed_server,
         timeout_conn, reset_send_data_user, max_conn, max_data_user, block_on_count,
-        reset_on_time, is_get_sock, ban_sock, headers, ban_ip, force_firewall_count,
+        reset_on_time, is_get_sock, ban_sock, headers,
         block_time, time_connect
     )
-except ImportError:
+except ImportError as e:
+    print(e)
     print("[CONFIG_ERR]>> config.py not found or syntax error!")
     input()
     sys.exit()
 
 class DDoSProtection:
     def __init__(self):
+        ###UDP Conf
+        self.udp_packet_count = {}
+        self.udp_threshold = 1000
+        self.udp_time_window = 60
+        self.udp_session_threshold = 1000
+        ###
         self.pid = getpid()
         self.ddos = {}
         self.block = []
@@ -42,7 +51,6 @@ class DDoSProtection:
 
     def load_config(self):
         try:
-            ########################################################
             self.host_fake = host_fake
             self.host_real = host_real
             self.port_fake = port_fake
@@ -58,19 +66,20 @@ class DDoSProtection:
             self.is_get_sock = is_get_sock
             self.ban_sock = ban_sock
             self.headers = headers
-            self.ban_ip = ban_ip
-            self.list_ban_ip = str(ban_ip).replace("/32", "")
-            self.force_firewall_count = force_firewall_count
             self.block_time = block_time
             self.time_connect = time_connect
-            #########################################################
-            
+
+            # Validate IP addresses
             for ip in [self.host_fake, self.host_real]:
                 if not isinstance(ip, str) or not all(0 <= int(part) < 256 for part in ip.split('.')):
                     raise ValueError(f"Invalid IP address: {ip}")
+
+            # Validate ports
             for port in [self.port_fake, self.port_real]:
                 if not isinstance(port, int) or not (1 <= port <= 65535):
                     raise ValueError(f"Invalid port: {port}")
+
+            # Validate other configurations
             if not isinstance(self.max_speed_user, int) or self.max_speed_user < 0:
                 raise ValueError("max_speed_user should be a non-negative integer")
             if not isinstance(self.max_speed_server, int) or self.max_speed_server < 0:
@@ -89,8 +98,6 @@ class DDoSProtection:
                 raise ValueError("reset_on_time should be at least 1")
             if not isinstance(self.is_get_sock, int) or self.is_get_sock not in [0, 1]:
                 raise ValueError("is_get_sock should be either 0 or 1")
-            if not isinstance(self.force_firewall_count, int) or self.force_firewall_count < 0:
-                raise ValueError("force_firewall_count should be a non-negative integer")
             if not isinstance(self.block_time, int) or self.block_time < 0:
                 raise ValueError("block_time should be a non-negative integer")
             if not isinstance(self.time_connect, (int, float)) or self.time_connect < 0:
@@ -106,12 +113,11 @@ class DDoSProtection:
             sleep(1)
             self.time_count += 1
 
-    def block_with_time(self, ip, time, is_add=1):
-        password = "idk"  # Linux password
+    def block_with_time(self, ip, time):
+        password = "123"  # Linux password
         command_remove = f"sudo iptables -D INPUT -s {ip} -j DROP"
         command_add = f"sudo iptables -A INPUT -s {ip} -j DROP"
-        if is_add == 1:
-            self.block.append(ip)
+        self.block.append(ip)
         child = pexpect.spawn(command_add)
         child.expect("password for")
         child.sendline(password)
@@ -124,6 +130,7 @@ class DDoSProtection:
             child.expect("password for")
             child.sendline(password)
             child.expect(pexpect.EOF)
+            print("work")
             self.block.remove(ip)
             print(f'[INFO_TIMEBLOCK] {ip} UNDROPPED - by expired {self.block_time} minutes')
         print("Unblock: {} (Out of time)".format(ip))
@@ -138,6 +145,27 @@ class DDoSProtection:
 
     def clear(self):
         system("clear")
+
+    def monitor_udp_traffic(self):
+        udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        udp_socket.bind((self.host_fake, self.port_fake))
+        while True:
+            data, addr = udp_socket.recvfrom(1024)
+            ip = addr[0]
+            current_time = time.time()
+            
+            if ip not in self.udp_packet_count:
+                self.udp_packet_count[ip] = {"packets": [], "last_packet_time": current_time, "session_count": 1}
+            else:
+                self.udp_packet_count[ip]["packets"].append(current_time)
+                self.udp_packet_count[ip]["packets"] = [t for t in self.udp_packet_count[ip]["packets"] if current_time - t <= self.udp_time_window]
+                self.udp_packet_count[ip]["last_packet_time"] = current_time
+                self.udp_packet_count[ip]["session_count"] = len(self.udp_packet_count[ip]["packets"])
+                
+            if len(self.udp_packet_count[ip]["packets"]) > self.udp_threshold or self.udp_packet_count[ip]["session_count"] > self.udp_session_threshold:
+                print(f"[INFO_UDP_BLOCK] Blocking IP {ip} due to UDP flood or excessive sessions")
+                self.block_ip(ip, None)
+                del self.udp_packet_count[ip]  # Remove the IP from the tracking dictionary after blocking
 
     def forward(self, ip, port, source, destination, is_a, is_user_send, b=""):
         if is_a == 1:
@@ -208,7 +236,7 @@ class DDoSProtection:
             pass
         for i in self.all_conn:
             try:
-                print(i)
+                globals()[i].close()
             except:
                 pass
 
@@ -216,7 +244,7 @@ class DDoSProtection:
         self.force_block[con_ip] = 0
         if self.block_time != 0:
             print("[INFO_BLOCK] Block {} for {} minutes".format(con_ip, self.block_time))
-            Thread(target=self.block_with_time, args=(con_ip, self.time_count + (self.block_time * 60), 0)).start()
+            Thread(target=self.block_with_time, args=(con_ip, self.time_count + (self.block_time * 60))).start()
         print("[INFO_BLOCK] Close all connection from {}".format(con_ip))
         try:
             a.close()
@@ -232,7 +260,7 @@ class DDoSProtection:
             except:
                 pass
 
-    def open_port(self, port):
+    def open_port(self, port): 
         current_conn = []
         self.all_conn = []
         count = 0
@@ -242,25 +270,13 @@ class DDoSProtection:
             self.soc.bind((str(self.host_fake), int(port)))
             self.soc.listen(9)
             Thread(target=self.time_run, args=()).start()
-            print("[!!] >> Started! Anti-DDoS protection")
+            print(f"[!!] >> Started! Anti-DDOS protection\n\t__________________________________________________________\n\t\tTCP (Protected) - [{port}]\n\t\tUDP (Protected) - [{port}]\n\t__________________________________________________________")
             while True:
                 try:
                     a, b = self.soc.accept()
                     if b[0] in self.block:
                         a.close()
-                        if self.force_firewall_count > 0:
-                            try:
-                                self.force_block[b[0]] += 1
-                            except:
-                                self.force_block[b[0]] = 1
-                            if self.force_block[b[0]] > self.force_firewall_count:
-                                print("!! Detected {0} try request {1} times! Blocking...".format(str(b[0]), str(self.force_block[self.count_ip])))
-                                Thread(target=self.block_ip, args=(b[0], a)).start()
-                                self.force_block[b[0]] = 0
-                                continue
-                            print("Blocked connection from {0} ({1})".format(b[0], self.force_block[b[0]]))
-                        else:
-                            print("Blocking connection from {0}".format(b[0]))
+                        print("Blocking connection from {0}".format(b[0]))
                     else:
                         if self.count_conn <= self.max_conn or b[0] in current_conn:
                             try:
@@ -351,6 +367,7 @@ but rewrited by iFanpSGTS")
         print("\n[RUNNING ON] config fake: http://{0}:{1} -> http://{2}:{3}".format(str(self.host_fake), str(self.port_fake), str(self.host_real), str(self.port_real)))
         print(f"[/] >> Starting Anti-DDOS...")
         Thread(target=self.open_port, args=(port,)).start()
+        Thread(target=self.monitor_udp_traffic).start()
         sleep(2)
         while True:
             try:
